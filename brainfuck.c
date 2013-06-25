@@ -1,7 +1,5 @@
-/*
- * Copyright (c) 2007 Mikko Ronkainen
- * This software is licensed under the MIT License.
- */
+// Copyright 2007-2013 Mikko Ronkainen <firstname@mikkoronkainen.com>
+// Licensed under the Apache License, Version 2.0 (see the LICENSE file)
 
 #include <stdlib.h>
 #include <stdio.h>
