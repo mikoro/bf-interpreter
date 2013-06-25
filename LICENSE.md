@@ -1,4 +1,4 @@
-Copyright 2007-2013 Mikko Ronkainen <firstname@mikkoronkainen.com>
+Copyright 2007-2013 Mikko Ronkainen (<firstname@mikkoronkainen.com>)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
