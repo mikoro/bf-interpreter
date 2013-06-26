@@ -16,5 +16,6 @@
 *.out
 *.app
 
-brainfuck
+bf
+*.plist
 
