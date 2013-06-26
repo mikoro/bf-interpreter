@@ -7,62 +7,59 @@
 #include <stdbool.h>
 #include <string.h>
 
+#define VERSION "1.0.0"
 #define DEFAULT_DATA_SIZE 30000
-#define DEFAULT_ENABLE_STATE false
 
-/// Holds all necessary information for one bf session
 typedef struct
 {
-	char* fileName;				///< Name of the file containing bf code
-	int8_t* data;				///< Data segment for the program
-	int8_t* dataStart;			///< Same as data, but it will not be modified
-	uint32_t dataSize;			///< Size of the data segment in bytes
-	uint8_t* code;				///< Actual bf code for the program
-	uint8_t* codeStart;			///< Same as code, but it will not be modified
-	bool enableBoundsCheck;		///< Enable bounds checking for the data segment
-	bool enableWrapCheck;		///< Enable wrap checking for data cells
-	bool enableSyntaxCheck;		///< Enable strict syntax check (onlybf instructions + allowedCharacters)
-	bool enableQuietMode;		///< While enabled, only output from the actual bf program is displayed
-	bool showHelp;				///< Will show the help text at the startup
+	char* filePath;				// file path for the code segment
+	uint8_t* code;				// code pointer and code segment
+	uint8_t* codeOrig;			// code pointer original position
+	int8_t* data;				// data pointer and data segment
+	int8_t* dataOrig;			// data pointer original position
+	uint32_t dataSize;			// data segment size in bytes
+	bool enableBoundsCheck;		// enable bounds checking for the data segment
+	bool enableWrapCheck;		// enable wrap checking for the data cells
+	bool enableSyntaxCheck;		// enable strict syntax checking
+	bool enableQuietMode;		// enable quiet mode
+	bool showHelp;				// show help at startup
 } InterpreterState;
 
-/// All errors used in this program
 enum errorCodes { E_FILE, E_MEMORY, E_INDEX_ABOVE, E_INDEX_BELOW, E_WRAP_OVER, E_WRAP_UNDER, E_OPEN_BRACKET, E_CLOSE_BRACKET, E_SYNTAX, E_NONE };
 
-/// Textual presentation of the error codes
 const char* errorMessages[] =
 {
-	"Reading file failed!",
-	"Memory allocation failed!",
-	"Indexing above the data segment",
-	"Indexing below the data segment",
-	"Data cell value wraps over",
-	"Data cell value wraps under",
-	"No match for opening bracket",
-	"No match for closing bracket",
-	"Unknown command",
-	"No error?"
+	"Reading file failed",
+	"Memory allocation failed",
+	"Indexed above the data segment",
+	"Indexed below the data segment",
+	"Data cell value wrapped over",
+	"Data cell value wrapped under",
+	"No match for opening bracket found",
+	"No match for closing bracket found",
+	"Syntax error",
+	"No error"
 };
 
-/// Allowed characters for the syntax check (in addition to original bf instructions)
+const char* usageText = "Usage: bf [-f <file> | -d <size> | -b | -w | -s | -q | -h]\n(type 'bf -h' for help)\n";
+const char* helpText = 	"Brainfuck Interpreter v" VERSION "\n\n"
+						"Usage: bf [-f <file> | -d <size> | -b | -w | -s | -q | -h]\n\n"
+						"  -f <file>    read code segment from file (default is stdin)\n"
+						"  -d <size>    specify data segment size (default is 30000)\n"
+						"  -b           enable bounds checking for the data segment\n"
+						"  -w           enable under/over wrap checking for the data cells\n"
+						"  -s           enable strict syntax checking\n"
+						"  -q           enable quiet mode\n"
+						"  -h           show this help text\n\n";
+
+// allowed characters for the syntax checking (in addition to original bf instructions)
 const char* allowedCharacters = "\n";
 
-const char* usageText = "Usage: bf [-f <file> | -b | -w | -s | -q | -h]\n(type 'bf -h' for help)\n";
-const char* helpText = 	"Brainfuck interpreter v0.1\n"
-						"http://mikoro.iki.fi\n\n"
-						"Usage: bf [-f <file> | -b | -w | -s | -q | -h]\n\n"
-						"  -f <file>    read bf code from file (default is stdin)\n"
-						"  -b           enable bounds checking for the data segment\n"
-						"  -w           enable wrap checking for data cells\n"
-						"  -s           enable strict syntax check\n"
-						"  -q           enable quiet mode\n"
-						"  -h           this help text\n\n";
-
-bool initState(int argc, char* argv[], InterpreterState* state);
-void freeState(InterpreterState* state);
-int readFile(InterpreterState* state);
-int readStdin(InterpreterState* state);
-int interpret(InterpreterState* state);
+bool initializeState(int argc, char* argv[], InterpreterState* state);
+void uninitializeState(InterpreterState* state);
+int readCodeFromFile(InterpreterState* state);
+int readCodeFromStdin(InterpreterState* state);
+int interpretCode(InterpreterState* state);
 bool matchBracket(InterpreterState* state, bool forward);
 void findPosition(InterpreterState* state, int* row, int* column);
 
@@ -70,8 +67,7 @@ int main(int argc, char* argv[])
 {
 	InterpreterState state;
 
-	// init state and display usage/help texts if necessary
-	if(!initState(argc, argv, &state))
+	if(!initializeState(argc, argv, &state))
 	{
 		printf(usageText);
 		return EXIT_FAILURE;
@@ -84,21 +80,21 @@ int main(int argc, char* argv[])
 
 	int error;
 
-	// read bf code either from file or stdin
-	if(state.fileName)
-		error = readFile(&state);
+	// read code segment either from file or stdin
+	if(state.filePath)
+		error = readCodeFromFile(&state);
 	else
 	{
 		if(!state.enableQuietMode)
 			printf("Type in the code (issue ^D to stop):\n");
 
-		error = readStdin(&state);
+		error = readCodeFromStdin(&state);
 
 		if(!state.enableQuietMode && error == E_NONE)
 			printf("Running the program...\n");
 	}
 
-	// check errors for the code inputting
+	// check if code segment input succeeded
 	if(error != E_NONE)
 	{
 		if(!state.enableQuietMode)
@@ -115,16 +111,16 @@ int main(int argc, char* argv[])
 	}
 
 	// allocate memory for the data segment
-	if(!(state.data = state.dataStart = (int8_t*)calloc(state.dataSize, sizeof(int8_t))))
+	if(!(state.data = state.dataOrig = (int8_t*)calloc(state.dataSize, sizeof(int8_t))))
 	{
 		if(!state.enableQuietMode)
 			printf("Error: %s\n", errorMessages[E_MEMORY]);
 
-		freeState(&state);
+		uninitializeState(&state);
 		return EXIT_FAILURE;
 	}
 
-	error = interpret(&state);
+	error = interpretCode(&state);
 
 	if(error != E_NONE)
 	{
@@ -135,33 +131,28 @@ int main(int argc, char* argv[])
 			printf("Error: %s at %d:%d (code: '%c' data: '%d')\n", errorMessages[error], row, column, *state.code, *state.data);
 		}
 
-		freeState(&state);
+		uninitializeState(&state);
 		return EXIT_FAILURE;
 	}
 
-	freeState(&state);
+	uninitializeState(&state);
 	return EXIT_SUCCESS;
 }
 
-/**
- * Initialize state from command line parameters
- * @param argc Argument count
- * @param argv Argument strings
- * @param state State to be initialized
- * @return True if successfull, false otherwise
- */
-bool initState(int argc, char* argv[], InterpreterState* state)
+// initialize interpreter state from the command line parameters
+// return true if successfull, false otherwise
+bool initializeState(int argc, char* argv[], InterpreterState* state)
 {
-	state->fileName = NULL;
-	state->data = NULL;
-	state->dataStart = NULL;
-	state->dataSize = DEFAULT_DATA_SIZE;
+	state->filePath = NULL;
 	state->code = NULL;
-	state->codeStart = NULL;
-	state->enableBoundsCheck = DEFAULT_ENABLE_STATE;
-	state->enableWrapCheck = DEFAULT_ENABLE_STATE;
-	state->enableSyntaxCheck = DEFAULT_ENABLE_STATE;
-	state->enableQuietMode = DEFAULT_ENABLE_STATE;
+	state->codeOrig = NULL;
+	state->data = NULL;
+	state->dataOrig = NULL;
+	state->dataSize = DEFAULT_DATA_SIZE;
+	state->enableBoundsCheck = false;
+	state->enableWrapCheck = false;
+	state->enableSyntaxCheck = false;
+	state->enableQuietMode = false;
 	state->showHelp = false;
 
 	bool valid = true;
@@ -177,7 +168,7 @@ bool initState(int argc, char* argv[], InterpreterState* state)
 				case 'f':
 				{
 					if(++i < argc)
-						state->fileName = argv[i];
+						state->filePath = argv[i];
 					else
 						valid = false;
 				} break;
@@ -195,10 +186,10 @@ bool initState(int argc, char* argv[], InterpreterState* state)
 				} break;
 
 				// all the other state variables
-				case 'b': state->enableBoundsCheck = !DEFAULT_ENABLE_STATE; break;
-				case 'w': state->enableWrapCheck = !DEFAULT_ENABLE_STATE; break;
-				case 's': state->enableSyntaxCheck = !DEFAULT_ENABLE_STATE; break;
-				case 'q': state->enableQuietMode = !DEFAULT_ENABLE_STATE; break;
+				case 'b': state->enableBoundsCheck = true; break;
+				case 'w': state->enableWrapCheck = true; break;
+				case 's': state->enableSyntaxCheck = true; break;
+				case 'q': state->enableQuietMode = true; break;
 				case 'h': state->showHelp = true; break;
 
 				default: valid = false;
@@ -211,100 +202,91 @@ bool initState(int argc, char* argv[], InterpreterState* state)
 	return valid;
 }
 
-/**
- * Free all resources binded to a state
- * @param state State to be freed
- */
-void freeState(InterpreterState* state)
+// free all resources
+void uninitializeState(InterpreterState* state)
 {
-	free(state->codeStart);
-	free(state->dataStart);
+	free(state->codeOrig);
+	free(state->dataOrig);
 }
 
-/**
- * Read bf code from file
- * @param state State where code is saved
- * @return E_NONE if successfull, any other if failed
- */
-int readFile(InterpreterState* state)
+// initialize code segment from file
+// return E_NONE if successfull, any other if failed
+int readCodeFromFile(InterpreterState* state)
 {
-	FILE* file = fopen(state->fileName, "r");
+	FILE* file = fopen(state->filePath, "r");
 
 	if(!file)
 		return E_FILE;
 
-	// find the file length
+	// determine the file length
 	fseek(file, 0, SEEK_END);
 	uint32_t length = ftell(file);
 	rewind(file);
 
 	if(length > 0)
 	{
-		// allocate memory for the code
-		if(!(state->code = state->codeStart = (uint8_t*)malloc(sizeof(uint8_t) * length)))
+		// allocate memory for the code segment
+		if(!(state->code = state->codeOrig = (uint8_t*)malloc(sizeof(uint8_t) * length)))
 			return E_MEMORY;
 
 		fread(state->code, sizeof(uint8_t), length, file);
-		state->code[length-1] = 0;
+		state->code[length - 1] = 0;
 		fclose(file);
 	}
 
 	return E_NONE;
 }
 
-/**
- * Read bf code from standard input
- * @param state State where code is saved
- * @return E_NONE if successfull, any other if failed
- */
-int readStdin(InterpreterState* state)
+// initialize code segment from stdin
+// return E_NONE if successfull, any other if failed
+int readCodeFromStdin(InterpreterState* state)
 {
 	int c;
 	uint32_t length = 0;
 
 	while((c = getchar()) != EOF)
 	{
-		// allocate memory for the code, realloc with every new character
-		if(!(state->code = state->codeStart = (uint8_t*)realloc(state->code, sizeof(uint8_t) * ++length)))
+		// allocate memory for the code segment, realloc with every new character
+		if(!(state->code = state->codeOrig = (uint8_t*)realloc(state->code, sizeof(uint8_t) * ++length)))
 			return E_MEMORY;
 
-		state->code[length-1] = (uint8_t)c;
+		state->code[length - 1] = (uint8_t)c;
 	}
 
 	if(length > 0)
-		state->code[length-1] = 0;
+		state->code[length - 1] = 0;
 
 	return E_NONE;
 }
 
-/**
- * Interpret bf code
- * @param state State to be interpreted
- * @return E_NONE if successfull, any other if failed
- */
-int interpret(InterpreterState* state)
+// interpret the code segment
+// return E_NONE if successfull, any other if failed
+int interpretCode(InterpreterState* state)
 {
-	// loop until zero character
+	// loop until a zero character
 	while(*state->code)
 	{
 		switch(*state->code)
 		{
+			// move the pointer to the right
 			case '>':
 			{
-				if(state->enableBoundsCheck && ((uint32_t)(state->data - state->dataStart) == state->dataSize))
+				if(state->enableBoundsCheck && ((uint32_t)(state->data - state->dataOrig) == state->dataSize))
 					return E_INDEX_ABOVE;
 
 				++state->data;
 			} break;
 
+			// move the pointer to the left
 			case '<':
 			{
-				if(state->enableBoundsCheck && (state->data - state->dataStart == 0))
+				if(state->enableBoundsCheck && (state->data - state->dataOrig == 0))
 					return E_INDEX_BELOW;
 
 				--state->data;
 			} break;
 
+			// increment the memory cell under the pointer
 			case '+':
 			{
 				if(state->enableWrapCheck && (*state->data == INT8_MAX))
@@ -313,6 +295,7 @@ int interpret(InterpreterState* state)
 				++*state->data;
 			} break;
 
+			// decrement the memory cell under the pointer
 			case '-':
 			{
 				if(state->enableWrapCheck && (*state->data == INT8_MIN))
@@ -321,21 +304,26 @@ int interpret(InterpreterState* state)
 				--*state->data;
 			} break;
 
+			// jump past the matching ] if the cell under the pointer is 0
 			case '[':
 			{
 				if(!*state->data && !matchBracket(state, true))
 					return E_OPEN_BRACKET;
 			} break;
 
+			// jump back to the matching [ if the cell under the pointer is nonzero
 			case ']':
 			{
 				if(*state->data && !matchBracket(state, false))
 					return E_CLOSE_BRACKET;
 			} break;
 
-			case ',': *state->data = (int8_t)getchar(); break;
+			// output the character signified by the cell at the pointer
 			case '.': putchar(*state->data); break;
-
+			
+			// input a character and store it in the cell at the pointer
+			case ',': *state->data = (int8_t)getchar(); break;
+			
 			default:
 			{
 				if(state->enableSyntaxCheck && !strchr(allowedCharacters, *state->code))
@@ -349,21 +337,17 @@ int interpret(InterpreterState* state)
 	return E_NONE;
 }
 
-/**
- * Move code pointer to corresponding bracket
- * @param state State to be modified
- * @param forward If true, move forward while searching, otherwise move backwards
- * @return True if match was found, false otherwise
- */
+// move code pointer to matching bracket
+// return true if match was found, false otherwise
 bool matchBracket(InterpreterState* state, bool forward)
 {
 	uint8_t* codeCurrent = state->code;
 
-	// loop until matching bracket was found
+	// loop until matching bracket was found (and take into account possible nested brackets)
 	for(int i=0; i += (*state->code == '[') - (*state->code == ']'); state->code += (forward ? 1 : -1))
 	{
 		// check that we don't under/overflow
-		if(state->code - state->codeStart < 0 || !*state->code)
+		if(state->code - state->codeOrig < 0 || !*state->code)
 		{
 			state->code = codeCurrent;
 			return false;
@@ -373,21 +357,17 @@ bool matchBracket(InterpreterState* state, bool forward)
 	return true;
 }
 
-/**
- * Find the position (row and column) of the code pointer
- * @param state State to be searched
- * @param row Output row
- * @param column Output column
- */
+// determine row and column position of the current code pointer inside the code segment
 void findPosition(InterpreterState* state, int* row, int* column)
 {
 	int x = 1, y = 1;
 
-	for(int i=0; i < (state->code - state->codeStart); ++i)
+	// loop from the beginning of the code segment to current code pointer position
+	for(int i=0; i < (state->code - state->codeOrig); ++i)
 	{
 		++x;
 
-		if(state->codeStart[i] == '\n')
+		if(state->codeOrig[i] == '\n')
 		{
 			x = 1;
 			++y;
