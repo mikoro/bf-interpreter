@@ -280,12 +280,12 @@ int readCodeFromStdin(InterpreterState* state)
 // return E_NONE if successfull, any other if failed
 int interpretCode(InterpreterState* state)
 {
-	// loop until a zero character
+	// loop until the end of the code segment (a zero character)
 	while(*state->code)
 	{
 		switch(*state->code)
 		{
-			// move the pointer to the right
+			// move the data pointer to the right
 			case '>':
 			{
 				if(state->enableBoundsCheck && ((uint32_t)(state->data - state->dataOrig) >= (state->dataSize - 1)))
@@ -295,7 +295,7 @@ int interpretCode(InterpreterState* state)
 				
 			} break;
 
-			// move the pointer to the left
+			// move the data pointer to the left
 			case '<':
 			{
 				if(state->enableBoundsCheck && ((state->data - state->dataOrig) <= 0))
@@ -305,7 +305,7 @@ int interpretCode(InterpreterState* state)
 				
 			} break;
 
-			// increment the memory cell under the pointer
+			// increment the memory cell under the data pointer
 			case '+':
 			{
 				if(state->enableWrapCheck && (*state->data == UINT8_MAX))
@@ -315,7 +315,7 @@ int interpretCode(InterpreterState* state)
 				
 			} break;
 
-			// decrement the memory cell under the pointer
+			// decrement the memory cell under the data pointer
 			case '-':
 			{
 				if(state->enableWrapCheck && (*state->data == 0))
@@ -325,7 +325,7 @@ int interpretCode(InterpreterState* state)
 				
 			} break;
 
-			// jump past the matching ] if the cell under the pointer is 0
+			// jump past the matching ] if the cell under the data pointer is 0
 			case '[':
 			{
 				if(!*state->data && !matchBracket(state, true))
@@ -333,7 +333,7 @@ int interpretCode(InterpreterState* state)
 					
 			} break;
 
-			// jump back to the matching [ if the cell under the pointer is nonzero
+			// jump back to the matching [ if the cell under the data pointer is nonzero
 			case ']':
 			{
 				if(*state->data && !matchBracket(state, false))
@@ -341,10 +341,10 @@ int interpretCode(InterpreterState* state)
 					
 			} break;
 
-			// output the character signified by the cell at the pointer
+			// output the character signified by the cell at the data pointer
 			case '.': putchar(*state->data); break;
 			
-			// input a character and store it in the cell at the pointer
+			// input a character and store it in the cell at the data pointer
 			case ',': *state->data = (uint8_t)getchar(); break;
 			
 			default:
