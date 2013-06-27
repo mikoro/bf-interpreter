@@ -342,14 +342,18 @@ int interpretCode(InterpreterState* state)
 bool matchBracket(InterpreterState* state, bool forward)
 {
 	uint8_t* codeCurrent = state->code;
-
+	
 	// loop until matching bracket was found (and take into account possible nested brackets)
-	for(int i=0; i += (*state->code == '[') - (*state->code == ']'); state->code += (forward ? 1 : -1))
+	for(int i=0; i += (*state->code == '[') - (*state->code == ']');)
 	{
-		// check that we don't under/overflow
-		if(state->code - state->codeOrig < 0 || !*state->code)
+		state->code += (forward ? 1 : -1);
+		
+		// check if we have traveled past the beginning or the end of the code segment
+		if((state->code - state->codeOrig) < 0 || !*state->code)
 		{
+			// restore code pointer location (so that findPosition will work)
 			state->code = codeCurrent;
+			
 			return false;
 		}
 	}
