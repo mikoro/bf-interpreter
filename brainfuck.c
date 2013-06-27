@@ -15,8 +15,8 @@ typedef struct
 	char* filePath;				// file path for the code segment
 	uint8_t* code;				// code pointer and code segment
 	uint8_t* codeOrig;			// code pointer original position
-	int8_t* data;				// data pointer and data segment
-	int8_t* dataOrig;			// data pointer original position
+	uint8_t* data;				// data pointer and data segment
+	uint8_t* dataOrig;			// data pointer original position
 	uint32_t dataSize;			// data segment size in bytes
 	bool enableBoundsCheck;		// enable bounds checking for the data segment
 	bool enableWrapCheck;		// enable wrap checking for the data cells
@@ -111,7 +111,7 @@ int main(int argc, char* argv[])
 	}
 
 	// allocate memory for the data segment
-	if(!(state.data = state.dataOrig = (int8_t*)calloc(state.dataSize, sizeof(int8_t))))
+	if(!(state.data = state.dataOrig = (uint8_t*)calloc(state.dataSize, sizeof(uint8_t))))
 	{
 		if(!state.enableQuietMode)
 			printf("Error: %s\n", errorMessages[E_MEMORY]);
@@ -271,7 +271,7 @@ int interpretCode(InterpreterState* state)
 			// move the pointer to the right
 			case '>':
 			{
-				if(state->enableBoundsCheck && ((uint32_t)(state->data - state->dataOrig) == state->dataSize))
+				if(state->enableBoundsCheck && ((uint32_t)(state->data - state->dataOrig) >= (state->dataSize - 1)))
 					return E_INDEX_ABOVE;
 
 				++state->data;
@@ -280,7 +280,7 @@ int interpretCode(InterpreterState* state)
 			// move the pointer to the left
 			case '<':
 			{
-				if(state->enableBoundsCheck && (state->data - state->dataOrig == 0))
+				if(state->enableBoundsCheck && ((state->data - state->dataOrig) <= 0))
 					return E_INDEX_BELOW;
 
 				--state->data;
@@ -289,7 +289,7 @@ int interpretCode(InterpreterState* state)
 			// increment the memory cell under the pointer
 			case '+':
 			{
-				if(state->enableWrapCheck && (*state->data == INT8_MAX))
+				if(state->enableWrapCheck && (*state->data == UINT8_MAX))
 					return E_WRAP_OVER;
 
 				++*state->data;
@@ -298,7 +298,7 @@ int interpretCode(InterpreterState* state)
 			// decrement the memory cell under the pointer
 			case '-':
 			{
-				if(state->enableWrapCheck && (*state->data == INT8_MIN))
+				if(state->enableWrapCheck && (*state->data == 0))
 					return E_WRAP_UNDER;
 
 				--*state->data;
@@ -322,7 +322,7 @@ int interpretCode(InterpreterState* state)
 			case '.': putchar(*state->data); break;
 			
 			// input a character and store it in the cell at the pointer
-			case ',': *state->data = (int8_t)getchar(); break;
+			case ',': *state->data = (uint8_t)getchar(); break;
 			
 			default:
 			{
