@@ -55,6 +55,7 @@ const char* helpText = 	"Brainfuck Interpreter v" VERSION "\n\n"
 // allowed characters for the syntax checking (in addition to original bf instructions)
 const char* allowedCharacters = "\n";
 
+int run(InterpreterState* state);
 bool initializeState(int argc, char* argv[], InterpreterState* state);
 void uninitializeState(InterpreterState* state);
 int readCodeFromFile(InterpreterState* state);
@@ -78,64 +79,69 @@ int main(int argc, char* argv[])
 		return EXIT_SUCCESS;
 	}
 
+	int result = run(&state);
+	uninitializeState(&state);
+	
+	return result;
+}
+
+int run(InterpreterState* state)
+{
 	int error;
 
 	// read code segment either from file or stdin
-	if(state.filePath)
-		error = readCodeFromFile(&state);
+	if(state->filePath)
+		error = readCodeFromFile(state);
 	else
 	{
-		if(!state.enableQuietMode)
+		if(!state->enableQuietMode)
 			printf("Type in the code (issue ^D to stop):\n");
 
-		error = readCodeFromStdin(&state);
+		error = readCodeFromStdin(state);
 
-		if(!state.enableQuietMode && error == E_NONE)
+		if(!state->enableQuietMode && error == E_NONE)
 			printf("Running the program...\n");
 	}
 
 	// check if code segment input succeeded
 	if(error != E_NONE)
 	{
-		if(!state.enableQuietMode)
+		if(!state->enableQuietMode)
 			printf("Error: %s\n", errorMessages[error]);
 
 		return EXIT_FAILURE;
 	}
-	else if(!state.code)
+	else if(!state->code)
 	{
-		if(!state.enableQuietMode)
+		if(!state->enableQuietMode)
 			printf("No code to be interpreted!\n");
 
 		return EXIT_FAILURE;
 	}
 
 	// allocate memory for the data segment
-	if(!(state.data = state.dataOrig = (uint8_t*)calloc(state.dataSize, sizeof(uint8_t))))
+	if(!(state->data = state->dataOrig = (uint8_t*)calloc(state->dataSize, sizeof(uint8_t))))
 	{
-		if(!state.enableQuietMode)
+		if(!state->enableQuietMode)
 			printf("Error: %s\n", errorMessages[E_MEMORY]);
 
-		uninitializeState(&state);
 		return EXIT_FAILURE;
 	}
 
-	error = interpretCode(&state);
+	error = interpretCode(state);
 
 	if(error != E_NONE)
 	{
-		if(!state.enableQuietMode)
+		if(!state->enableQuietMode)
 		{
 			int row, column;
-			findPosition(&state, &row, &column);
-			printf("Error: %s at %d:%d (code: '%c' data: '%d')\n", errorMessages[error], row, column, *state.code, *state.data);
+			findPosition(state, &row, &column);
+			printf("Error: %s at %d:%d (code: '%c' data: '%d')\n", errorMessages[error], row, column, *state->code, *state->data);
 		}
 
-		uninitializeState(&state);
 		return EXIT_FAILURE;
 	}
-
-	uninitializeState(&state);
+	
 	return EXIT_SUCCESS;
 }
 
@@ -171,6 +177,7 @@ bool initializeState(int argc, char* argv[], InterpreterState* state)
 						state->filePath = argv[i];
 					else
 						valid = false;
+						
 				} break;
 
 				// explicit data size
@@ -183,6 +190,7 @@ bool initializeState(int argc, char* argv[], InterpreterState* state)
 					}
 					else
 						valid = false;
+						
 				} break;
 
 				// all the other state variables
@@ -205,11 +213,20 @@ bool initializeState(int argc, char* argv[], InterpreterState* state)
 // free all resources
 void uninitializeState(InterpreterState* state)
 {
-	free(state->codeOrig);
-	free(state->dataOrig);
+	if (state->codeOrig)
+	{
+		free(state->codeOrig);
+		state->codeOrig = NULL;
+	}
+	
+	if (state->dataOrig)
+	{
+		free(state->dataOrig);
+		state->dataOrig = NULL;
+	}
 }
 
-// initialize code segment from file
+// initialize code segment from a file
 // return E_NONE if successfull, any other if failed
 int readCodeFromFile(InterpreterState* state)
 {
@@ -275,6 +292,7 @@ int interpretCode(InterpreterState* state)
 					return E_INDEX_ABOVE;
 
 				++state->data;
+				
 			} break;
 
 			// move the pointer to the left
@@ -284,6 +302,7 @@ int interpretCode(InterpreterState* state)
 					return E_INDEX_BELOW;
 
 				--state->data;
+				
 			} break;
 
 			// increment the memory cell under the pointer
@@ -293,6 +312,7 @@ int interpretCode(InterpreterState* state)
 					return E_WRAP_OVER;
 
 				++*state->data;
+				
 			} break;
 
 			// decrement the memory cell under the pointer
@@ -302,6 +322,7 @@ int interpretCode(InterpreterState* state)
 					return E_WRAP_UNDER;
 
 				--*state->data;
+				
 			} break;
 
 			// jump past the matching ] if the cell under the pointer is 0
@@ -309,6 +330,7 @@ int interpretCode(InterpreterState* state)
 			{
 				if(!*state->data && !matchBracket(state, true))
 					return E_OPEN_BRACKET;
+					
 			} break;
 
 			// jump back to the matching [ if the cell under the pointer is nonzero
@@ -316,6 +338,7 @@ int interpretCode(InterpreterState* state)
 			{
 				if(*state->data && !matchBracket(state, false))
 					return E_CLOSE_BRACKET;
+					
 			} break;
 
 			// output the character signified by the cell at the pointer
