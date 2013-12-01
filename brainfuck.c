@@ -70,12 +70,12 @@ int main(int argc, char* argv[])
 
 	if(!initializeState(argc, argv, &state))
 	{
-		printf(usageText);
+		printf("%s", usageText);
 		return EXIT_FAILURE;
 	}
 	else if(state.showHelp)
 	{
-		printf(helpText);
+		printf("%s", helpText);
 		return EXIT_SUCCESS;
 	}
 
@@ -246,11 +246,17 @@ int readCodeFromFile(InterpreterState* state)
 		if(!(state->code = state->codeOrig = (uint8_t*)malloc(sizeof(uint8_t) * length)))
 			return E_MEMORY;
 
-		fread(state->code, sizeof(uint8_t), length, file);
+		length = fread(state->code, sizeof(uint8_t), length, file);
+		// handle fread() error
+		if(length == 0)
+		{
+			fclose(file);
+			return E_FILE;
+		}
 		state->code[length - 1] = 0;
-		fclose(file);
 	}
 
+	fclose(file);
 	return E_NONE;
 }
 
