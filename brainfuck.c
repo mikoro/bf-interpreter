@@ -1,5 +1,7 @@
-// Copyright 2007-2013 Mikko Ronkainen <firstname@mikkoronkainen.com>
-// Licensed under the Apache License, Version 2.0 (see the LICENSE file)
+/*
+ * Copyright © 2007 Mikko Ronkainen <firstname@mikkoronkainen.com>
+ * License: MIT, see the LICENSE file.
+ */
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -247,12 +249,14 @@ int readCodeFromFile(InterpreterState* state)
 			return E_MEMORY;
 
 		length = fread(state->code, sizeof(uint8_t), length, file);
+		
 		// handle fread() error
 		if(length == 0)
 		{
 			fclose(file);
 			return E_FILE;
 		}
+		
 		state->code[length - 1] = 0;
 	}
 
